@@ -1,0 +1,99 @@
+path = getDirectory("Choose input directory"); 
+_RootFolder = getDirectory("Choose output directory");
+outputfolder = _RootFolder + "/coloc2_output";
+File.makeDirectory(outputfolder);
+outputfolderROIs = _RootFolder + "/coloc2_output ROIs";
+File.makeDirectory(outputfolderROIs);
+
+filelist = getFileList(path); 
+for (i=0; i< filelist.length; i++) {
+     if (endsWith(filelist[i], ".czi")) {
+run("Bio-Formats Importer", "open=[" + path + filelist[i] + "] autoscale color_mode=Default view=Hyperstack stack_order=XYCZT series_1");     
+title=getTitle();
+
+run("Arrange Channels...", "new=12");
+Stack.setChannel(1);
+run("Red");
+run("Enhance Contrast", "saturated=0.35");
+
+Stack.setChannel(2);
+run("Green");
+run("Enhance Contrast", "saturated=0.35");
+
+Stack.setDisplayMode("composite");
+run("ROI Manager...");
+
+waitForUser("Draw ROI, hit OK");
+
+if (roiManager("Count") == 0){
+	waitForUser("Really draw ROI, hit OK");
+}
+
+
+for (j = 0; j < roiManager("count"); j++){
+	roiManager("Deselect");
+	roiManager("Select", j);
+	roiManager("Save selected", _RootFolder + "/coloc2_output ROIs/" + title + "_" + j + ".roi");
+	
+	run("Duplicate...", "duplicate");
+    run("Clear Outside", "stack");
+	
+	run("Split Channels");
+	selectImage(2);
+	run("8-bit");
+	rename("C1");
+	
+	selectImage(3);
+	rename("C2");
+	run("8-bit");
+
+	run("Coloc 2", "channel_1=C1 channel_2=C2 roi_or_mask=<None> threshold_regression=Costes psf=3 costes_randomisations=10");
+	
+	selectWindow("Log");
+	saveAs("Text", outputfolder + "/" + title + "_" + j + ".txt");
+	selectWindow("Log");
+	print("\\Clear");
+	close("C1"); 
+	close("C2"); 
+}
+
+roiManager("Deselect");
+run("Select None");
+selectWindow(title);
+Stack.setChannel(1);
+run("Translate...", "x=75 y=0 interpolation=None slice");
+
+for (j = 0; j < roiManager("count"); j++){
+	roiManager("Deselect");
+	roiManager("Select", j);
+
+	run("Duplicate...", "duplicate");
+    run("Clear Outside", "stack");
+	
+	run("Split Channels");
+	selectImage(2);
+	run("8-bit");
+	rename("C1");
+	
+	selectImage(3);
+	rename("C2");
+	run("8-bit");
+
+	run("Coloc 2", "channel_1=C1 channel_2=C2 roi_or_mask=<None> threshold_regression=Costes psf=3 costes_randomisations=10");
+	
+	selectWindow("Log");
+	saveAs("Text", outputfolder + "/" + title + "_" + j + "_random.txt");
+	selectWindow("Log");
+	print("\\Clear");
+	
+	close("C1"); 
+	close("C2"); 
+}
+
+if (roiManager("Count") > 0){
+ roiManager("Delete");
+}
+run("Close All");
+
+}
+	}
