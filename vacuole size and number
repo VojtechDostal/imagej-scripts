@@ -1,0 +1,115 @@
+path = getDirectory("Choose input directory"); 
+_RootFolder = getDirectory("Choose output directory");
+outputfolder = _RootFolder + "/output";
+File.makeDirectory(outputfolder);
+filelist = getFileList(path); 
+outputfolderROIs = _RootFolder + "/output ROIs";
+File.makeDirectory(outputfolderROIs);
+for (file=0; file< filelist.length; file++) {
+     if (endsWith(filelist[file], ".tif")) {
+     	if (!endsWith(filelist[file], "d.tif")) {
+			open(path + filelist[file]);
+
+			title=getTitle();
+			run("8-bit");
+			run("Enhance Contrast", "saturated=0.15");
+			run("Duplicate...", " ");
+			
+			title2=getTitle();
+			run("Gaussian Blur...", "sigma=100");
+			run("Specify...", "width=200 height=1360 x=0 y=0");
+			run("Measure");
+			run("Select None");
+			subtractmean=getResult("Mean", 0);
+			run("Clear Results");
+			run("Subtract...", "value=subtractmean");
+			
+			imageCalculator("Subtract",title,title2);
+			selectWindow(title2);
+			close(title2);
+			
+			selectWindow(title);
+			setThreshold(222, 255, "raw");
+			run("Analyze Particles...", "size=10-Infinity pixel circularity=0.8-1.00 include add");
+			close(title);
+			open(path + title);			
+			run("8-bit");
+			Stack.setXUnit("um");
+			Stack.setYUnit("um");
+			run("Properties...", "channels=1 slices=1 frames=1 pixel_width=0.647 pixel_height=0.647 voxel_depth=0.647");			
+			run("Enhance Contrast", "saturated=0.35");
+			roiManager("Show All without labels");
+			
+			fordeletion=newArray();
+			for(i=0; i<roiManager("count"); i++) {
+				roiManager("Select", i);
+				run("To Selection");
+				current_zoom = getZoom()/10;
+				getLocationAndSize(x, y, width, height); // This gets the current WINDOW position and size.
+				getSelectionBounds(sx, sy, sw, sh); // This is necessary to center the selection to the correct bounds
+				dx = (width / 2) / current_zoom; dy = (height / 2) / current_zoom;
+				setSelectionLocation( sx - dx + sw/2, sy - dy + sh/2 );
+				run("To Selection"); // This goes to the selection (Zoom menu) but also changes the window size, which is undesirable.
+				roiManager("Deselect");
+				run("Set... ", "zoom=" + current_zoom*100); //This reverts the zoom but then....
+				Table.setLocationAndSize(x, y, width, height, getTitle() );		
+				setSelectionLocation( sx, sy ); // Change this back.
+				question=getBoolean("What to do?", "Remove", "Keep and continue");
+				if (question==1) {
+					fordeletion = Array.concat(fordeletion, i);
+					}
+			}
+			run("Select None");
+			roiManager("Deselect");
+			if(fordeletion.length != 0){
+				roiManager("Select", fordeletion);
+				roiManager("Delete");
+			}
+			waitForUser("Now add more ROIs then press OK");
+			
+			for(i=0; i<roiManager("Count"); i++) {
+				run("Select None");
+				roiManager("Deselect");
+				roiManager("Select",i);
+				run("Measure");
+			}
+			selectWindow("Results");
+			saveAs("Text", outputfolder + "/" + title + "_vacuole_measurements.txt");
+			run("Clear Results");
+						
+			vacuoletotalcount=roiManager("count");
+			print("Total number of vacuoles: ",vacuoletotalcount);
+			run("Select None");
+			roiManager("Deselect");
+			roiManager("Save", outputfolderROIs + "/" + title + "_RoiSet.zip");
+			roiManager("Delete");
+			close(title);
+						
+			//Nuclei - start
+			
+			open(path + replace(title,".tif","d.tif") );
+			second=getTitle();
+			run("8-bit");
+			run("Enhance Local Contrast (CLAHE)", "blocksize=127 histogram=256 maximum=3 mask=*None* fast_(less_accurate)");
+			setAutoThreshold("Default dark");
+			setOption("BlackBackground", true);
+			run("Convert to Mask");
+			run("Watershed");
+			run("Analyze Particles...", "size=50-Infinity pixel circularity=0-1.00 include add");
+			celltotalcount=roiManager("Count");
+			print("Total number of cells: ",celltotalcount); 
+			print("Vacuole-to-Cell ratio: ",vacuoletotalcount / celltotalcount ); 
+			run("Select None");			
+			roiManager("Deselect");
+			roiManager("Delete");		
+			
+			selectWindow("Log");
+			saveAs("Text", outputfolder + "/" + title + "_statistics.txt");
+			selectWindow("Log");
+			print("\\Clear");
+			close(second);
+
+ 	    }
+	}
+}
+
