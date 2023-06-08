@@ -1,0 +1,132 @@
+path = getDirectory("Choose input directory"); 
+_RootFolder = getDirectory("Choose output directory");
+outputfolder = _RootFolder + "/coloc2_output";
+File.makeDirectory(outputfolder);
+outputfolderROIs = _RootFolder + "/coloc2_output ROIs";
+File.makeDirectory(outputfolderROIs);
+
+filelist = getFileList(path); 
+for (i=0; i< filelist.length; i++) {
+     if (endsWith(filelist[i], ".czi")) {
+run("Bio-Formats Importer", "open=[" + path + filelist[i] + "] autoscale color_mode=Default view=Hyperstack stack_order=XYCZT series_1");     
+title=getTitle();
+run("8-bit");
+
+run("Arrange Channels...", "new=12");
+Stack.setChannel(1);
+run("Red");
+run("Enhance Contrast", "saturated=0.35");
+
+Stack.setChannel(2);
+run("Green");
+run("Enhance Contrast", "saturated=0.35");
+
+Stack.setDisplayMode("composite");
+
+//load cell ROIs from previous Pearson’s experiment
+macrodirectory = "C:/coloc2_output ROIs/";
+macrolist = getFileList(macrodirectory);
+for (macros=0; macros<macrolist.length; macros++) {
+     if (startsWith(macrolist[macros], title))
+            roiManager("open", macrodirectory+macrolist[macros]);
+      }
+//Count cell ROIs
+cellcount=roiManager("count");
+totalcellcount=0;
+totalintersecting=0;
+totallampvesicles=0;
+totalswipvesicles=0;
+
+//Cycle per cell
+for (j = 0; j < roiManager("count"); j++){
+	roiManager("Deselect");
+	roiManager("Select", j);
+	run("Duplicate...", "duplicate");
+	titlecell=getTitle();
+    run("Clear Outside", "stack");
+	
+	Stack.setChannel(2);
+	setThreshold(44, 255);
+	run("Convert to Mask", "method=Default slice");
+	run("Analyze Particles...", "size=12-20000 pixel add slice");
+	
+	for (vesicle=cellcount; vesicle < roiManager("Count"); vesicle++) {
+	roiManager("Select", vesicle);
+	run("Enlarge...", "enlarge=0.15");
+	roiManager("Update");
+	}
+    	
+    swipvesicles=roiManager("count")-cellcount;
+        
+    roiManager("Deselect");
+    run("Select None");
+	Stack.setChannel(1);
+	setThreshold(150, 255); //21 for LAMP1, 150 for Rab5A
+	run("Convert to Mask", "method=Intermodes slice");
+	run("Analyze Particles...", "size=15-20000 pixel add slice");
+	
+	lampvesicles=roiManager("count")-swipvesicles;	
+	
+	print("Cell number: ",j+1, "/", cellcount);
+	print("Total SWIP vesicles: ", swipvesicles);
+	print("Total LAMP1 vesicles: ", lampvesicles);
+  
+    totalcellcount=totalcellcount+cellcount;
+    totalswipvesicles=totalswipvesicles+swipvesicles;
+    totallampvesicles=totallampvesicles+lampvesicles;
+    
+    roiManager("Deselect");
+    run("Select None");
+    
+    intersecting=0; 
+    for (x=cellcount;x<(swipvesicles-cellcount);x++){
+       intersect=false;
+       for (y=cellcount+swipvesicles;y<roiManager("Count");y++){
+     	  roiManager("Select",newArray(x,y));
+     	  roiManager("AND");
+     	  if ((x!=y)&&(selectionType>-1)) {
+          //print (x,y," do intersect");
+          intersect=true;
+			 } //else {print(x,y," do not intersect"); }
+	   }
+	   if (intersect==true){
+	   	intersecting=intersecting+1;
+	                      }
+	   intersect=false;
+	   
+	}
+	totalintersecting=totalintersecting+intersecting;
+	print("Intersecting SWIP vesicles: ", intersecting, " / ", swipvesicles, "(applies to: ",title,")");
+	print(" ");
+    run("Select None");  
+    roiManager("Deselect");  
+    //odstraneni ROIs vacku pred prechodem na dalsi bunku ve fotce
+
+    for (z = roiManager("count"); z > cellcount; z--){
+    	roiManager("Select",z-1);
+    	roiManager("Delete");
+    		}
+    close(titlecell);
+}
+
+//After finishing one picture
+
+print(" ");
+print("Total count of cells in image: ",totalcellcount);
+print("Total count of SWIP vesicles: ",totalswipvesicles);
+print("Total count of LAMP1 vesicles: ",totallampvesicles);
+print("Total count of intersecting vesicles: ",totalintersecting);
+
+if (roiManager("Count") > 0){
+ run("Select None");  	
+ roiManager("Deselect");  
+ roiManager("Delete");
+}
+selectWindow("Log");
+saveAs("Text", outputfolder + "/" + title + ".txt");
+selectWindow("Log");
+print("\\Clear");
+run("Close All");
+
+}
+	}
