@@ -1,0 +1,10 @@
+run("8-bit");
+title=getTitle();
+run("Stack Difference", "gap=1");
+run("Median...", "radius=1 stack");
+setAutoThreshold("RenyiEntropy dark stack");
+run("Analyze Particles...", "size=8-Infinity display add stack");
+selectWindow("Results");
+saveAs("Text", "D:/" + title + ".txt");
+run("Clear Results");
+close(title);
