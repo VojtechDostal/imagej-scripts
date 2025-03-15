@@ -1,0 +1,50 @@
+input = getDirectory("Choose input directory"); 
+output = getDirectory("Choose output directory");
+//input="F:/Paula/input/"
+//output="F:/Paula/output/"
+filelist = getFileList(input);
+string="waitingforuser";
+run("Set Measurements...", "area integrated redirect=None decimal=3");
+run("Clear Results");	
+for (sequence=0; sequence< filelist.length; sequence++) {
+	
+	run("Bio-Formats Importer", "open=[" + input + filelist[sequence] + "] autoscale color_mode=Default view=Hyperstack stack_order=XYCZT series_1"); 
+	run("Make Composite", "display=Composite");
+	title=getTitle();  
+	
+	Stack.setChannel(1);
+	run("Enhance Contrast", "saturated=0.2");
+	Stack.setChannel(2);
+	run("Enhance Contrast", "saturated=0.35");	
+	Stack.setChannel(3);
+	run("Enhance Contrast", "saturated=0.2");
+	Stack.setChannel(4);
+	run("Enhance Contrast", "saturated=0.2");	
+	Stack.setDisplayMode("composite");
+	Stack.setActiveChannels("0111");
+	
+	waitForUser("Select lysosomes as ROI");
+	lysosomes=roiManager("count");
+	
+	for (l=0; l< lysosomes; l++) {
+		roiManager("Select", l);
+
+		Stack.setChannel(3);
+		run("Measure");
+		Stack.setChannel(4);
+		run("Measure");
+		
+		areas=Table.getColumn("Area");
+		intdens=Table.getColumn("IntDen");
+		
+		//print(title+" | Area: "+ areas[0]);
+		print(title+" | Blue: Particle no: " + l + ":" + intdens[0]);
+		print(title+" | Yellow: Particle no: " + l + ":" + intdens[1]);
+		
+		run("Clear Results");	
+
+	}
+	roiManager("deselect");
+	roiManager("reset");
+    close(title);
+	}
