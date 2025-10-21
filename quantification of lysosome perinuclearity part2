@@ -1,0 +1,53 @@
+input = getDirectory("Choose directory with txt files"); 
+filelist = getFileList(input);
+string="waitingforuser";
+run("Clear Results");	
+for (i=0; i< filelist.length; i++) {
+	
+	Table.open(input+filelist[i]);
+	tablesize=Table.size;
+	totalcytosolic=0;
+	
+	for(j=2;j<Table.size;j++){
+		totalcytosolic=totalcytosolic+Table.get("Area",j);
+	}	
+	
+	totalintden=0;
+	for(l=1;l<Table.size;l++){
+		if(!isNaN(Table.get("IntDen",l)) ) {
+			totalintden=totalintden+Table.get("IntDen",l);
+		}
+	}		
+	areas=Table.getColumn("Area");
+	intdens=Table.getColumn("IntDen");
+	
+	area_proximal10=0;
+	intden_proximal10=intdens[1];	
+	m=2;
+	do {
+		area_proximal10=area_proximal10+areas[m];
+		if(!isNaN(intdens[m])) {
+			intden_proximal10=intden_proximal10+intdens[m];
+			}
+		m=m+1;
+	} while(area_proximal10<totalcytosolic/5);
+	
+	area_distal10=0;
+	intden_distal10=0;
+	k=tablesize-1;
+	do{
+		area_distal10=area_distal10+areas[k];
+		if(!isNaN(intdens[k])) {
+			intden_distal10=intden_distal10+intdens[k];
+			}
+		k=k-1;
+	} while(area_distal10<totalcytosolic/5);
+	
+    print(filelist[i]+" | Proximal 20% of Cytosolic area (um2): "+area_proximal10+" out of "+totalcytosolic);
+    print(filelist[i]+" | Intensity at nucleus + proximal 20% of area: "+intden_proximal10+" out of "+totalintden);	
+    print(filelist[i]+" | Distal 20% of Area (um2): "+area_distal10+" out of "+totalcytosolic);
+    print(filelist[i]+" | Intensity at distal 20% of area: "+intden_distal10+" out of "+totalintden);
+
+	close(filelist[i]);
+	
+}
