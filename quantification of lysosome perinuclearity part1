@@ -1,0 +1,130 @@
+input = getDirectory("Choose directory with merged files"); 
+output = getDirectory("Choose final output directory");
+setBackgroundColor(0, 0, 0);
+filelist = getFileList(input);
+string="waitingforuser";
+run("Set Measurements...", "area integrated redirect=None decimal=3");
+run("Clear Results");	
+for (i=0; i< filelist.length; i++) {
+	if(endsWith(filelist[i],".tif")){
+	
+	open(input + filelist[i]);
+	
+	//subtracting high background present in the lysosomal channel
+	Stack.setDisplayMode("color");
+	Stack.setChannel(2);
+	run("Subtract Background...", "rolling=50 slice");
+	Stack.setDisplayMode("composite");
+	
+	title=getTitle();   
+	if (roiManager("Count") > 0){
+		roiManager("Deselect");
+		roiManager("Delete");
+	}
+roiManager("Open", input+"rois/"+title+"_Roi.zip");
+roiManager("Deselect");
+numberofcells=roiManager("count");
+
+for (j = 0; j < numberofcells; j++){
+	roiManager("Show None");
+	roiManager("Deselect");	
+	roiManager("Select", j);
+	run("Duplicate...", "duplicate");
+	run("Clear Outside");
+	roiManager("Add");
+	roiManager("Deselect");	
+	run("Select None");
+	wait(1000);
+	
+	//nuclear area
+		getPixelSize(unit, pixelWidth, pixelHeight);
+		run("Duplicate...", "duplicate channels=3");
+		roiManager("Show All");
+		roiManager("Show None");
+		run("Median...", "radius=20");
+		setAutoThreshold("Default dark");
+		run("Convert to Mask");
+		run("Analyze Particles...", "size=40-Infinity include add");
+		//check if nucleus correctly detected
+		waitForUser("Nucleus correctly detected?");
+	    run("Close");	
+	   
+		//Calculate total cytosolic area
+		run("Clear Results");
+		roiManager("Select", newArray(roiManager("count")-1,roiManager("count")-2));
+		roiManager("XOR");
+		//1st value will be total cytosolic area
+		run("Measure");
+
+	    
+	//now quantify lysosomal intensity in bands
+		run("Duplicate...", "duplicate channels=2");
+		roiManager("Deselect");		
+		
+		//2nd value will be nucleus
+		roiManager("Select",roiManager("count")-1);
+		run("Measure");
+		roiManager("Deselect");
+		
+		selectiontrue=1;
+		for (k = 0; k < 1000; k++){
+			delete2=false;
+			if (selectiontrue!=-1){
+				//now: numberofcells = updated roi of the current cell, 
+				//numberofcells+1 is the nuclear roi 
+				//now select nucleus ROI
+				roiManager("Select", numberofcells+1);
+				run("Enlarge...", "enlarge="+k/2); //where k equals 1 always
+				selectiontrue = selectionType();
+				if (selectiontrue!=-1){
+					run("Make Band...", "band=0.5"); //band size must equal calculation above
+				}
+				selectiontrue = selectionType();
+				if (selectiontrue!=-1){
+					roiManager("Add");
+					//band is now numberofcells+2
+					delete2=true;
+					roiManager("Select", newArray(numberofcells,numberofcells+2));
+					roiManager("AND");
+					}
+				selectiontrue = selectionType();
+				if (selectiontrue!=-1){
+					roiManager("Add");
+					//band after removing extracellular parts is now numberofcells+3
+					roiManager("Select",numberofcells+3);
+					roiManager("Measure");
+					roiManager("Delete");
+				} 
+				if (delete2==true) {	
+					roiManager("Select",numberofcells+2);
+				    roiManager("Delete");				
+				}	
+			}
+		}
+
+				//saving and cleaning after each cell
+				selectWindow("Results");
+				saveAs("Text", output + title +"_"+j+ ".txt");	
+				run("Clear Results");
+				roiManager("Select",numberofcells);
+				roiManager("Delete");					
+				if(roiManager("Count")==numberofcells+1){
+					roiManager("Select",numberofcells);
+					roiManager("Delete");
+					roiManager("Deselect");
+					}
+						
+				close();
+				close();
+				
+}
+
+if (roiManager("Count") > 0){
+ roiManager("Delete");
+}
+close();
+run("Close All");
+}
+}
+
+
