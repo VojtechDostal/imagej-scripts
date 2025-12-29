@@ -1,1 +1,145 @@
+# No external libraries needed (Base R version)
+file_list <- list.files(pattern = "\\.txt$")
+if(length(file_list) == 0) {
+  stop("No .txt files found in the working directory.")
+}
 
+process_cell_file <- function(filename) {
+  # Read file
+  df <- read.table(filename, header = TRUE, stringsAsFactors = FALSE)
+  
+  # Validation
+  if(nrow(df) < 3) {
+    warning(paste("File", filename, "skipped: Not enough rows."))
+    return(NULL)
+  }
+  
+  # --- STEP A: Get Original Ring Increments ---
+  calc_df <- df[2:nrow(df), ] # Drop Row 1 (Total), keep Nucleus onwards
+  
+  # Calculate increments (Ring n - Ring n-1)
+  ring_inc_area <- diff(calc_df$Area)
+  ring_inc_raw  <- diff(calc_df$RawIntDen)
+  
+  # --- STEP B: Construct Cumulative Vectors ---
+  # Cumulative Area vector: Starts at 0, ends at Total Cytosolic Area
+  cum_area_curve <- c(0, cumsum(ring_inc_area))
+  
+  # Cumulative Intensity vector: Starts at 0, ends at Total Cytosolic Intensity
+  cum_raw_curve <- c(0, cumsum(ring_inc_raw))
+  
+  # --- STEP C: Define New 12-Region Boundaries ---
+  total_cyto_area <- max(cum_area_curve)
+  
+  # Create 13 break points (0 to Total) to define 12 regions
+  target_area_breaks <- seq(from = 0, to = total_cyto_area, length.out = 13)
+  
+  # --- STEP D: Interpolate Intensity at New Boundaries ---
+  # approx returns list(x=..., y=...)
+  interpolated_int <- approx(x = cum_area_curve, 
+                             y = cum_raw_curve, 
+                             xout = target_area_breaks)$y
+  
+  # --- STEP E: Calculate Region Increments ---
+  region_areas <- diff(target_area_breaks)
+  region_raws  <- diff(interpolated_int)
+  
+  # Calculate Percentage of Total Intensity for this cell
+  total_cell_intensity <- sum(region_raws)
+  percent_int <- (region_raws / total_cell_intensity) * 100
+  
+  # --- STEP F: Create Final Table ---
+  clean_df <- data.frame(
+    File_Name = filename,
+    Region_ID = 1:12, # Always 1 to 12
+    Region_Area = region_areas,
+    Region_RawIntDen = region_raws,
+    Percent_Total_Int = percent_int
+  )
+  
+  return(clean_df)
+}
+
+# 3. EXECUTE BATCH PROCESSING ------------------------------------------------
+list_of_dataframes <- lapply(file_list, process_cell_file)
+final_results <- do.call(rbind, list_of_dataframes)
+
+# 4. PARSE FILENAMES (METADATA EXTRACTION) -----------------------------------
+# Extract Group ID (Number at the very start of filename)
+# Regex now looks for "MAX_" followed by digits
+final_results$Group <- sub("^MAX_([0-9]+).*", "\\1", final_results$File_Name)
+
+# Extract Channel (Assumes "channel1" or "channel2" is in the filename)
+final_results$Channel <- ifelse(grepl("channel1", final_results$File_Name), "channel1",
+                         ifelse(grepl("channel2", final_results$File_Name), "channel2", "Unknown"))
+
+# 5. AGGREGATE DATA (AVERAGE REPLICATES) -------------------------------------
+# We average the Percent_Total_Int for each Group + Channel + Region_ID
+agg_data <- aggregate(Percent_Total_Int ~ Group + Channel + Region_ID, 
+                      data = final_results, 
+                      FUN = mean)
+
+# 6. PLOT HISTOGRAMS (SIDE-BY-SIDE CHANNELS) ---------------------------------
+# Open a PDF device to save the plots
+pdf("Cell_Analysis_Histograms.pdf", width = 10, height = 6)
+
+# Identify unique Groups
+unique_groups <- unique(agg_data$Group)
+
+# Define a consistent Y-axis limit (max value + 10% buffer)
+y_limit <- max(agg_data$Percent_Total_Int) * 1.1
+
+# Loop through every Group (combining channels in one plot)
+for(grp in unique_groups) {
+  
+  # Subset the data for this specific Group
+  grp_data <- subset(agg_data, Group == grp)
+  
+  # Prepare matrix for barplot: 2 rows (Channel 1, Channel 2), 12 columns (Regions)
+  # We initialize with 0
+  plot_mat <- matrix(0, nrow = 2, ncol = 12)
+  rownames(plot_mat) <- c("Channel 1", "Channel 2")
+  colnames(plot_mat) <- 1:12
+  
+  # Fill Channel 1 Data (Row 1)
+  c1_data <- subset(grp_data, Channel == "channel1")
+  if(nrow(c1_data) > 0) {
+    c1_data <- c1_data[order(c1_data$Region_ID), ]
+    plot_mat[1, c1_data$Region_ID] <- c1_data$Percent_Total_Int
+  }
+  
+  # Fill Channel 2 Data (Row 2)
+  c2_data <- subset(grp_data, Channel == "channel2")
+  if(nrow(c2_data) > 0) {
+    c2_data <- c2_data[order(c2_data$Region_ID), ]
+    plot_mat[2, c2_data$Region_ID] <- c2_data$Percent_Total_Int
+  }
+  
+  # Create the Bar Plot (beside = TRUE puts bars side by side)
+  barplot(plot_mat,
+          beside = TRUE,
+          main = paste("Avg Intensity Distribution - Group:", grp),
+          xlab = "Region (1 = Center, 12 = Periphery)",
+          ylab = "% of Total Intensity",
+          col = c("blue", "red"),       # Blue for Ch1, Red for Ch2
+          ylim = c(0, y_limit),
+          legend.text = TRUE,           # Add legend using rownames
+          args.legend = list(x = "topright", bty = "n"))
+  
+  # Add a box around the plot area
+  box()
+}
+
+# Close the PDF device
+dev.off()
+
+# 7. SAVE DATA ---------------------------------------------------------------
+# Save the raw individual cell data
+write.csv(final_results, "Analyzed_Cell_Data_Individual.csv", row.names = FALSE)
+# Save the averaged data used for plotting
+write.csv(agg_data, "Analyzed_Cell_Data_Averaged.csv", row.names = FALSE)
+
+print("Analysis complete.")
+print("1. 'Analyzed_Cell_Data_Individual.csv' created (All cells).")
+print("2. 'Analyzed_Cell_Data_Averaged.csv' created (Averages).")
+print("3. 'Cell_Analysis_Histograms.pdf' created (Side-by-side plots).")
