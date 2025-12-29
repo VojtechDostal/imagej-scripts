@@ -1,1 +1,179 @@
+input = getDirectory("Choose input directory"); 
+roifolder = getDirectory("Choose ROI directory");
+output = getDirectory("Choose output directory");
+
+setBackgroundColor(0, 0, 0);
+filelist = getFileList(input);
+string="waitingforuser";
+run("Set Measurements...", "area integrated redirect=None decimal=3");
+run("Clear Results");	
+
+for (i=0; i< filelist.length; i++) {
+	
+	open(input + filelist[i]);
+	run("Select None");
+	//Stack.setDisplayMode("color");
+	//run("Subtract Background...", "rolling=50 slice");
+	//run("Enhance Contrast", "saturated=0.35");
+	Stack.setDisplayMode("composite");
+	
+	title=getTitle();   
+	if (roiManager("Count") > 0){
+		roiManager("Deselect");
+		roiManager("Delete");
+	}
+	
+//detecting lysosomes
+  run("Duplicate...", "duplicate channels=1");
+	rename("lysosome_mask");
+	//waitForUser(string);
+	setAutoThreshold("Moments dark");
+	run("Convert to Mask");
+	run("Analyze Particles...", "size=5-Infinity pixel include add");
+	roiManager("combine");
+	roiManager("reset");
+	roiManager("add");
+	close("lysosome_mask");
+	
+//clearing nonlysosomal signal	
+	Stack.setDisplayMode("color");
+	Stack.setChannel(1);
+	roiManager("Select",0);
+	run("Clear Outside", "slice");
+	Stack.setChannel(2);
+	run("Clear Outside", "slice");
+	roiManager("reset");
+	run("Select None");
+
+Stack.setDisplayMode("composite");
+roiManager("Open", roifolder+title+".zip");
+cellnumber=roiManager("count");
+
+for (j = 0; j < cellnumber; j++){
+	roiManager("Show None");
+	roiManager("Deselect");	
+	roiManager("Select", j);
+	run("Duplicate...", "duplicate");
+	
+	title_cell=getTitle();
+	run("Clear Outside");
+	roiManager("Add");
+	roiManager("Deselect");	
+	run("Select None");
+	wait(100);
+		
+	//nuclear area
+		getPixelSize(unit, pixelWidth, pixelHeight);
+		run("Duplicate...", "duplicate channels=3");
+		roiManager("Show All");
+		roiManager("Show None");
+		run("Median...", "radius=20");
+		setAutoThreshold("Default dark");
+		run("Convert to Mask");
+		run("Analyze Particles...", "size=50-Infinity include add");
+	    run("Close");	
+		
+		cell_roi=cellnumber;
+		nucleus_roi=cellnumber+1;
+		
+		//Calculate total cytosolic area
+		run("Clear Results");
+		roiManager("Select", newArray(cell_roi,nucleus_roi));
+		roiManager("XOR");
+		Stack.setDisplayMode("color");
+		Stack.setChannel(1);
+		//1st measured value will be total cytosolic area
+		run("Measure");
+		
+	run("Duplicate...", "duplicate channels=1");
+	rename(title+"_channel1");
+	roiManager("Deselect");		
+		
+	//2nd measured value will be nucleus
+		roiManager("Select",nucleus_roi);
+		run("Measure");
+		roiManager("Deselect");
+		
+		diff=1;
+		k=0;
+		do {
+			k=k+1;
+			if(k==255){
+				k=k+1;
+				}
+			roiManager("Select", nucleus_roi);
+			run("Enlarge...", "enlarge="+k+" pixel"); //Best shape expansion I have found but still over time circularizes the selection
+			roiManager("Add");
+			current_nucleus=roiManager("count")-1;
+
+			roiManager("Select", newArray(cell_roi,current_nucleus));
+			roiManager("AND");
+	
+			run("Measure");
+			roiManager("Select",current_nucleus);
+			roiManager("Delete");
+			if(nResults>15){
+				diff=getResult("Area", nResults-1)-getResult("Area", nResults-2);
+				}
+		} while ( diff>0 ) ;
+		close(title+"_channel1");
+		selectWindow("Results");
+		saveAs("Text", output + title + "_" +j+ "_channel1"+".txt");	
+		run("Clear Results");
+
+//beginning of channel2
+		roiManager("Select", newArray(cell_roi,nucleus_roi));
+		roiManager("XOR");
+		Stack.setDisplayMode("color");
+		Stack.setChannel(2);
+		//1st measured value will be total cytosolic area
+		run("Measure");
+		
+		run("Duplicate...", "duplicate channels=2");
+		rename(title+"_channel2");
+		roiManager("Deselect");		
+		
+		//2nd measured value will be nucleus
+		roiManager("Select",nucleus_roi);
+		run("Measure");
+		roiManager("Deselect");
+		
+		diff=1;
+		k=0;
+		do {
+			k=k+1;
+			if(k==255){
+				k=k+1;
+				}
+			roiManager("Select", nucleus_roi);
+			run("Enlarge...", "enlarge="+k+" pixel"); //Best shape expansion I have found but still over time circularizes the selection
+			roiManager("Add");
+			current_nucleus=roiManager("count")-1;
+
+			roiManager("Select", newArray(cell_roi,current_nucleus));
+			roiManager("AND");
+			run("Measure");
+			roiManager("Select",current_nucleus);
+			roiManager("Delete");
+			if(nResults>15){
+				diff=getResult("Area", nResults-1)-getResult("Area", nResults-2);
+				}
+		} while ( diff>0 ) ;
+		close(title+"_channel2");
+		selectWindow("Results");
+		saveAs("Text", output + title + "_" +j+ "_channel2"+".txt");	
+		run("Clear Results");
+
+//end of channel2
+close(title_cell);
+roiManager("reset");
+roiManager("Open", roifolder+title+".zip");
+}
+
+if (roiManager("Count") > 0){
+ roiManager("Delete");
+	}
+
+run("Close All");
+}
 
